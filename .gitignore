@@ -1,0 +1,4 @@
+lib/*.dll
+lib/*.xml
+bin/
+obj/
