@@ -5,12 +5,53 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Kfp;
+
 namespace Kfp.Server
 {
     public static class Program
     {
         public static void Main(string[] args) {
-            Task.WaitAll(Serve());
+            var conn = Connection.CreateServer(6754);
+            conn.MsgReceived += MsgReceived;
+
+            Console.WriteLine("Press a key to exit...");
+            Console.ReadKey();
+        }
+
+        static void MsgReceived(
+            MsgType type, ulong number, byte[] data, IPEndPoint remoteEndPoint)
+        {
+            switch (type) {
+                case MsgType.Ack: {
+                    // do nothing
+                    break;
+                }
+                case MsgType.Debug: {
+                    var encoding = System.Text.Encoding.UTF8;
+                    var msg = encoding.GetString(data, 9, data.Length - 9);
+                    Console.WriteLine("{0}", msg);
+                    break;
+                }
+                case MsgType.VesselUpdate: {
+                    using (var ms = new MemoryStream(data))
+                    using (var reader = new BinaryReader(ms)) {
+                        reader.ReadByte(); // type
+                        reader.ReadUInt64(); // msgNumber
+
+                        var vesselId = new Guid(reader.ReadBytes(16));
+                        var changed = reader.ReadInt32();
+
+                        Console.WriteLine(
+                            "VesselUpdate: {0} {1}",
+                            vesselId, Convert.ToString(changed, 2));
+                    }
+                    break;
+                }
+                default:
+                    Console.WriteLine("unknown message type: {0}", type);
+                    break;
+            }
         }
 
         static async Task Serve() {
@@ -22,21 +63,21 @@ namespace Kfp.Server
                         .ReceiveAsync()
                         .WithCancellation(token);
 
-                    var type = datagram.Buffer[0];
+                    var type = (MsgType)datagram.Buffer[0];
 
                     // TODO: set the message type to Ack
                     // TODO: get the message number and repeat it
                     listener.Send(new byte[5], 5, datagram.RemoteEndPoint);
 
                     switch (type) {
-                        case 0: {
+                        case MsgType.Debug: {
                             var encoding = System.Text.Encoding.UTF8;
                             var msg = encoding.GetString(datagram.Buffer, 1,
                                                          datagram.Buffer.Length - 1);
                             Console.WriteLine("{0}", msg);
                             break;
                         }
-                        case 1: {
+                        case MsgType.VesselUpdate: {
                             using (var ms = new MemoryStream(datagram.Buffer))
                             using (var reader = new BinaryReader(ms))
                             {
@@ -44,9 +85,9 @@ namespace Kfp.Server
                                 var vesselId = new Guid(reader.ReadBytes(16));
                                 var changed = reader.ReadInt32();
 
-                                Console.WriteLine("vessel update: {0} {1}",
-                                                  vesselId,
-                                                  Convert.ToString(changed, 2));
+                                Console.WriteLine(
+                                    "vessel update: {0} {1}",
+                                    vesselId, Convert.ToString(changed, 2));
                             }
                             break;
                         }

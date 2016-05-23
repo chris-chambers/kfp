@@ -28,7 +28,7 @@ namespace Kfp
             var toRemove = new HashSet<Guid>(_vessels.Keys);
             foreach (var vessel in FlightGlobals.Vessels) {
                 toRemove.Remove(vessel.id);
-                VesselStatus stat = VesselStatus.FromVessel(vessel);
+                VesselStatus stat = VesselStatusExtensions.FromVessel(vessel);
                 VesselStatus prevStat;
                 MagicDiff<VesselStatus> diff;
                 if (!_vessels.TryGetValue(vessel.id, out prevStat)) {
@@ -44,7 +44,7 @@ namespace Kfp
                 diff.Apply(ref prevStat);
                 _vessels[vessel.id] = prevStat;
 
-                if (diff.Changed.Data != 0) {
+                if (diff.Changed != 0) {
                     // Debug.LogFormat("kfp: acc: {0} {1}",
                     //                 prevInfo.acceleration,
                     //                 info.acceleration);
@@ -62,36 +62,9 @@ namespace Kfp
         }
     }
 
-    // TODO: Move to Common
-    public struct VesselStatus
+    static class VesselStatusExtensions
     {
-        public Guid Id;
-
-        [Magic(0)] public string Name;
-        // [Magic(1)]
-        public double planetTime;
-        [Magic(2)] public string bodyName;
-        [Magic(3)] public Quaternion rotation;
-        [Magic(4)] public Vector3 angularVelocity;
-
-        // public FlightCtrlState flightState;
-        // public bool[] actiongroupControls;
-
-        // public bool isSurfaceUpdate;
-
-        //Orbital parameters
-        // TODO: orbit
-        public double[] orbit;
-
-        //Surface parameters
-        //Position = lat,long,alt,ground height.
-        // TODO: position
-        [Magic(5)] public Vector3d position;
-        [Magic(6)] public Vector3d velocity;
-        [Magic(7)] public Vector3d acceleration;
-        [Magic(8)] public Vector3 terrainNormal;
-
-        public static VesselStatus FromVessel(Vessel v)
+        internal static VesselStatus FromVessel(Vessel v)
         {
             return new VesselStatus {
                 Id = v.id,

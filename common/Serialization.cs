@@ -80,7 +80,7 @@ namespace Kfp
         public static void Write<T>(BinaryWriter w, MagicDiff<T> diff)
             where T : struct
         {
-            w.Write(diff.Changed.Data);
+            w.Write(diff.Changed);
 
             // var bindingFlags = BindingFlags.Public | BindingFlags.Instance;
 
@@ -96,7 +96,7 @@ namespace Kfp
         public static MagicDiff<T> Create<T>(T? oldItem, T newItem) where T : struct {
             if (!oldItem.HasValue) {
                 return new MagicDiff<T> {
-                    Changed = new BitVector32(-1),
+                    Changed = -1,
                     Item = newItem,
                 };
             }
@@ -104,7 +104,7 @@ namespace Kfp
             var differ = MagicIntrospection.GetDiffer<T>();
             var oldItemValue = oldItem.Value;
             return new MagicDiff<T> {
-                Changed = new BitVector32(differ(ref oldItemValue, ref newItem)),
+                Changed = differ(ref oldItemValue, ref newItem),
                 Item = newItem,
             };
         }
@@ -112,17 +112,17 @@ namespace Kfp
 
     public struct MagicDiff<T> where T : struct
     {
-        public BitVector32 Changed;
+        public int Changed;
         public T Item;
 
         public bool Apply(ref T target)
         {
-            if (Changed.Data == 0) {
+            if (Changed == 0) {
                 return false;
             }
 
             var applier = MagicIntrospection.GetApplier<T>();
-            applier(Changed.Data, ref Item, ref target);
+            applier(Changed, ref Item, ref target);
             return true;
         }
     }

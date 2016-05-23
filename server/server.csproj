@@ -5,7 +5,7 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProductVersion>8.0.30703</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{7AD735F5-A076-44D2-97EC-02ECAD827001}</ProjectGuid>
+    <ProjectGuid>{D702369D-5D14-4D27-8ADF-EC3EBA5C1E48}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>Kfp.Server</RootNamespace>
     <AssemblyName>KfpServer</AssemblyName>
@@ -32,8 +32,19 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Xml" />
+    <!-- FIXME Eliminate these references to KSPUtil and UnityEngine (needed for
+         some structs that can be replicated -->
+    <Reference Include="KSPUtil">
+      <HintPath>..\lib\KSPUtil.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>..\lib\UnityEngine.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Main.cs" />
+    <Compile Include="*.cs" />
+    <Compile Include="..\common\*.cs" />
   </ItemGroup>
 </Project>

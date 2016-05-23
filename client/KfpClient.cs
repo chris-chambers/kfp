@@ -17,7 +17,7 @@ namespace Kfp
             Debug.LogFormat("kfp: Start");
 
             var serverEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6754);
-            _conn = new Connection(serverEndPoint);
+            _conn = Connection.CreateClient(serverEndPoint);
             _vesselTracker = new VesselTracker(_conn);
 
             // GameEvents.onCrewBoardVessel.Add(OnCrewBoard);
