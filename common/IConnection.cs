@@ -1,10 +1,24 @@
+using System;
+using System.Net;
+
 namespace Kfp
 {
-    // IConversation?
-    public interface IConnection
+    public interface IConnection : IMessageSink, IMessageSource { }
+
+    public interface IMessageSink
     {
-        public ulong SendAck(MsgType originalType, ulong msgNumber);
-        public ulong SendDebug(string format, params object[] args);
-        public ulong SendVesselUpdate(Guid vesselId, MagicDiff<VesselStatus> diff);
+        ulong SendAck(MessageType originalType, ulong msgNumber);
+        ulong SendDebug(string format, params object[] args);
+        ulong SendVesselUpdate(Guid vesselId, Diff<VesselStatus> diff);
     }
+
+    public interface IMessageSource
+    {
+        IPEndPoint Remote { get; }
+
+        event MessageHandler MessageReceived;
+    }
+
+    public delegate void MessageHandler(
+        IConnection conn, MessageType type, ulong number, byte[] data);
 }

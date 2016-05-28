@@ -1,6 +1,6 @@
 namespace Kfp
 {
-    public enum MsgType : byte
+    public enum MessageType : byte
     {
         Ack = 0,
         VesselUpdate = 1,

@@ -5,44 +5,38 @@ using System.Net.Sockets;
 
 namespace Kfp
 {
-    public delegate void MsgReceivedHandler(
-        MsgType type, ulong number, byte[] data, IPEndPoint removeEndPoint);
-
-    public sealed class Connection : IDisposable
+    public sealed class Client : IConnection, IDisposable
     {
         private const int HeaderSize = 9;
 
-        private readonly UdpClient _client;
+        private readonly UdpClient _udp;
+        private readonly IPEndPoint _remote;
         private ulong _msgNumber;
 
-        public static Connection CreateServer(int port) {
-            var client = new UdpClient(port);
-            return new Connection(client);
+        public Client(IPEndPoint serverEndPoint) {
+            _remote = serverEndPoint;
+
+            _udp = new UdpClient();
+            _udp.Connect(serverEndPoint);
+            _udp.BeginReceive(ReceiveCallback, null);
         }
 
-        public static Connection CreateClient(IPEndPoint serverEndPoint) {
-            var client = new UdpClient();
-            client.Connect(serverEndPoint);
-
-            return new Connection(client);
-        }
-
-        private Connection(UdpClient client) {
-            _client = client;
-            _client.BeginReceive(ReceiveCallback, null);
-        }
-
-        ~Connection() {
+        ~Client() {
             Dispose(false);
         }
 
-        public event MsgReceivedHandler MsgReceived;
+        public IPEndPoint Remote
+        {
+            get { return _remote; }
+        }
+
+        public event MessageHandler MessageReceived;
 
         private void ReceiveCallback(IAsyncResult ar) {
             var endPoint = default(IPEndPoint);
             byte[] data;
             try {
-                data = _client.EndReceive(ar, ref endPoint);
+                data = _udp.EndReceive(ar, ref endPoint);
             } catch (SocketException) {
                 // TODO: Close the connection (or mark it as closed).
                 return;
@@ -51,22 +45,22 @@ namespace Kfp
                 return;
             }
 
-            _client.BeginReceive(ReceiveCallback, null);
-            if (MsgReceived == null) {
+            _udp.BeginReceive(ReceiveCallback, null);
+            if (MessageReceived == null) {
                 return;
             }
 
-            var type = (MsgType)data[0];
+            var type = (MessageType)data[0];
             // FIXME: Get the msgNumber.
             ulong msgNumber = 0;
 
-            MsgReceived(type, msgNumber, data, endPoint);
+            MessageReceived(this, type, msgNumber, data);
         }
 
-        public ulong SendAck(MsgType originalType, ulong msgNumber) {
-            const int size = sizeof(MsgType) + sizeof(ulong);
+        public ulong SendAck(MessageType originalType, ulong msgNumber) {
+            const int size = sizeof(MessageType) + sizeof(ulong);
 
-            using (var ms = AllocStream(MsgType.Ack, size))
+            using (var ms = AllocStream(MessageType.Ack, size))
             using (var w = new BinaryWriter(ms)) {
                 w.Write((byte)originalType);
                 w.Write(msgNumber);
@@ -79,14 +73,15 @@ namespace Kfp
             var encoding = System.Text.Encoding.UTF8;
 
             var msg = string.Format(format, args);
-            var buffer = AllocBuffer(MsgType.Debug, encoding.GetByteCount(msg));
+            var buffer = AllocBuffer(
+                MessageType.Debug, encoding.GetByteCount(msg));
             encoding.GetBytes(msg, 0, msg.Length, buffer, 1);
 
             return Send(buffer);
         }
 
         public ulong SendVesselUpdate(Guid vesselId, Diff<VesselStatus> diff) {
-            using (var ms = AllocStream(MsgType.VesselUpdate, null))
+            using (var ms = AllocStream(MessageType.VesselUpdate, null))
             using (var w = new BinaryWriter(ms)) {
                 w.Write(vesselId.ToByteArray());
                 DiffSerializer.Write(w, diff);
@@ -103,18 +98,18 @@ namespace Kfp
         }
 
         private ulong Send(byte[] buffer, int length) {
-            _client.Send(buffer, length);
+            _udp.Send(buffer, length);
             // FIXME: Really get the message number.
             return 0;
         }
 
-        private byte[] AllocBuffer(MsgType type, int size) {
+        private byte[] AllocBuffer(MessageType type, int size) {
             using (var ms = AllocStream(type, size)) {
                 return ms.GetBuffer();
             }
         }
 
-        private MemoryStream AllocStream(MsgType type, int? size) {
+        private MemoryStream AllocStream(MessageType type, int? size) {
             var ms = new MemoryStream(HeaderSize + size.GetValueOrDefault(0));
             var w = new BinaryWriter(ms);
             w.Write((byte)type);
@@ -136,10 +131,11 @@ namespace Kfp
 
         private void Dispose(bool disposing) {
             if (disposing) {
-                _client.Close();
+                _udp.Close();
             }
         }
 
         #endregion IDisposable
     }
+
 }

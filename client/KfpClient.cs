@@ -9,7 +9,7 @@ namespace Kfp
     [KSPAddon(KSPAddon.Startup.Instantly, true)]
     public class KfpClient : MonoBehaviour
     {
-        private Connection _conn;
+        private Client _client;
         private VesselTracker _vesselTracker;
 
         private void Start() {
@@ -17,8 +17,8 @@ namespace Kfp
             Debug.LogFormat("kfp: Start");
 
             var serverEndPoint = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 6754);
-            _conn = Connection.CreateClient(serverEndPoint);
-            _vesselTracker = new VesselTracker(_conn);
+            _client = new Client(serverEndPoint);
+            _vesselTracker = new VesselTracker(_client);
 
             // GameEvents.onCrewBoardVessel.Add(OnCrewBoard);
             // GameEvents.OnScienceChanged.Add(OnScienceChanged);
@@ -31,8 +31,8 @@ namespace Kfp
         private void OnDestroy() {
             Debug.LogFormat("kfp: OnDestroy");
 
-            _conn.Dispose();
-            _conn = null;
+            _client.Dispose();
+            _client = null;
 
             _vesselTracker = null;
 

@@ -7,10 +7,10 @@ namespace Kfp
 {
     class VesselTracker
     {
-        private readonly Connection _conn;
+        private readonly IConnection _conn;
         private readonly Dictionary<Guid, VesselStatus> _vessels;
 
-        public VesselTracker(Connection conn) {
+        public VesselTracker(IConnection conn) {
             if (conn == null) {
                 throw new ArgumentNullException("conn");
             }
