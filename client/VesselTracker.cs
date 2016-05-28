@@ -30,15 +30,15 @@ namespace Kfp
                 toRemove.Remove(vessel.id);
                 VesselStatus stat = VesselStatusExtensions.FromVessel(vessel);
                 VesselStatus prevStat;
-                MagicDiff<VesselStatus> diff;
+                Diff<VesselStatus> diff;
                 if (!_vessels.TryGetValue(vessel.id, out prevStat)) {
                     _conn.SendDebug(
                         "> new vessel: {0} ({1})",
                         stat.Name, stat.Id);
-                    diff = MagicDiff.Create(null, stat);
+                    diff = Diff.Create(null, stat);
                     // Debug.LogFormat("Name: {0}", diff.Item.Name);
                 } else {
-                    diff = MagicDiff.Create(prevStat, stat);
+                    diff = Diff.Create(prevStat, stat);
                 }
 
                 diff.Apply(ref prevStat);

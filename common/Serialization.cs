@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Kfp
 {
-    public static class MagicEqualityComparer
+    public static class DiffEqualityComparer
     {
         public static bool Equal(Vector3d a, Vector3d b) {
             return
@@ -66,18 +66,18 @@ namespace Kfp
     [AttributeUsage(
         AttributeTargets.Field | AttributeTargets.Property,
         AllowMultiple = false)]
-    public class MagicAttribute : Attribute
+    public class DiffAttribute : Attribute
     {
-        public MagicAttribute(int index) {
+        public DiffAttribute(int index) {
             Index = index;
         }
 
         public int Index { get; set; }
     }
 
-    public class MagicSerializer
+    public class DiffSerializer
     {
-        public static void Write<T>(BinaryWriter w, MagicDiff<T> diff)
+        public static void Write<T>(BinaryWriter w, Diff<T> diff)
             where T : struct
         {
             w.Write(diff.Changed);
@@ -91,26 +91,26 @@ namespace Kfp
         }
     }
 
-    public static class MagicDiff
+    public static class Diff
     {
-        public static MagicDiff<T> Create<T>(T? oldItem, T newItem) where T : struct {
+        public static Diff<T> Create<T>(T? oldItem, T newItem) where T : struct {
             if (!oldItem.HasValue) {
-                return new MagicDiff<T> {
+                return new Diff<T> {
                     Changed = -1,
                     Item = newItem,
                 };
             }
 
-            var differ = MagicIntrospection.GetDiffer<T>();
+            var differ = Introspection.GetDiffer<T>();
             var oldItemValue = oldItem.Value;
-            return new MagicDiff<T> {
+            return new Diff<T> {
                 Changed = differ(ref oldItemValue, ref newItem),
                 Item = newItem,
             };
         }
     }
 
-    public struct MagicDiff<T> where T : struct
+    public struct Diff<T> where T : struct
     {
         public int Changed;
         public T Item;
@@ -121,13 +121,13 @@ namespace Kfp
                 return false;
             }
 
-            var applier = MagicIntrospection.GetApplier<T>();
+            var applier = Introspection.GetApplier<T>();
             applier(Changed, ref Item, ref target);
             return true;
         }
     }
 
-    static class MagicIntrospection
+    static class Introspection
     {
         private static Dictionary<Type, object> _appliers =
             new Dictionary<Type, object>();
@@ -192,13 +192,13 @@ namespace Kfp
             return (Applier<T>)m.CreateDelegate(typeof(Applier<T>));
         }
 
-        private static MagicAttribute GetAttr(MemberInfo member) {
-            var attrs = member.GetCustomAttributes(typeof(MagicAttribute), true);
+        private static DiffAttribute GetAttr(MemberInfo member) {
+            var attrs = member.GetCustomAttributes(typeof(DiffAttribute), true);
             if (attrs.Length == 0) {
-                var msg = string.Format("has no {0}", typeof(MagicAttribute).Name);
+                var msg = string.Format("has no {0}", typeof(DiffAttribute).Name);
                 throw new ArgumentException("member", msg);
             }
-            return (MagicAttribute)attrs[0];
+            return (DiffAttribute)attrs[0];
         }
 
         private static void EmitGet(ILGenerator il, MemberInfo member) {
@@ -263,7 +263,7 @@ namespace Kfp
 
             // TODO: Make EmitEq nicer.
 
-            var equal = typeof(MagicEqualityComparer).GetMethod(
+            var equal = typeof(DiffEqualityComparer).GetMethod(
                 "Equal", new Type[] { type, type }
             );
 
@@ -323,7 +323,7 @@ namespace Kfp
                     continue;
                 }
 
-                var attrs = member.GetCustomAttributes(typeof(MagicAttribute), true);
+                var attrs = member.GetCustomAttributes(typeof(DiffAttribute), true);
                 if (attrs.Length > 0) {
                     yield return member;
                 }

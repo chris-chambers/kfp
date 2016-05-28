@@ -11,7 +11,7 @@ namespace Kfp.Tests
         public void ChangedIntFieldIsReported() {
             var a = new Foo { X = 1 };
             var b = new Foo { X = 2 };
-            var diff = MagicDiff.Create(a, b);
+            var diff = Diff.Create(a, b);
 
             Assert.That(diff.Changed, Is.EqualTo(1));
         }
@@ -20,7 +20,7 @@ namespace Kfp.Tests
         public void UnchangedIntFieldIsNotReported() {
             var a = new Foo { X = 1 };
             var b = new Foo { X = 1 };
-            var diff = MagicDiff.Create(a, b);
+            var diff = Diff.Create(a, b);
 
             Assert.That(diff.Changed, Is.EqualTo(0));
         }
@@ -29,7 +29,7 @@ namespace Kfp.Tests
         public void ChangedFieldsAreApplied() {
             var a = new Foo { X = 1 };
             var b = new Foo { X = 2 };
-            var diff = MagicDiff.Create(a, b);
+            var diff = Diff.Create(a, b);
             diff.Apply(ref a);
             Assert.That(a.X, Is.EqualTo(2));
         }
@@ -37,7 +37,7 @@ namespace Kfp.Tests
         [Test]
         public void UnchangedFieldsAreNotApplied() {
             var a = new Foo { X = 1 };
-            var diff = MagicDiff.Create(a, a);
+            var diff = Diff.Create(a, a);
             a.X = 10;
             diff.Apply(ref a);
 
@@ -46,7 +46,7 @@ namespace Kfp.Tests
 
         struct Foo
         {
-            [Magic(0)]
+            [Diff(0)]
             public int X;
         }
     }

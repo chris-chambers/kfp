@@ -85,11 +85,11 @@ namespace Kfp
             return Send(buffer);
         }
 
-        public ulong SendVesselUpdate(Guid vesselId, MagicDiff<VesselStatus> diff) {
+        public ulong SendVesselUpdate(Guid vesselId, Diff<VesselStatus> diff) {
             using (var ms = AllocStream(MsgType.VesselUpdate, null))
             using (var w = new BinaryWriter(ms)) {
                 w.Write(vesselId.ToByteArray());
-                MagicSerializer.Write(w, diff);
+                DiffSerializer.Write(w, diff);
                 return Send(ms);
             }
         }
