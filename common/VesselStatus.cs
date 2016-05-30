@@ -6,8 +6,6 @@ namespace Kfp
 {
     public struct VesselStatus
     {
-        public Guid Id;
-
         [Diff(0)] public string Name;
         // [Magic(1)]
         public double planetTime;

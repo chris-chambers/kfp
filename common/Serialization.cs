@@ -13,26 +13,28 @@ namespace Kfp
 {
     public static class DiffEqualityComparer
     {
+        private const double Epsilon = 9E-5;
+
         public static bool Equal(Vector3d a, Vector3d b) {
             return
-                NearlyEqual(a.x, b.x, 1E-4) &&
-                NearlyEqual(a.y, b.y, 1E-4) &&
-                NearlyEqual(a.z, b.z, 1E-4);
+                NearlyEqual(a.x, b.x, Epsilon) &&
+                NearlyEqual(a.y, b.y, Epsilon) &&
+                NearlyEqual(a.z, b.z, Epsilon);
         }
 
         public static bool Equal(Vector3 a, Vector3 b) {
             return
-                NearlyEqual(a.x, b.x, 1E-4f) &&
-                NearlyEqual(a.y, b.y, 1E-4f) &&
-                NearlyEqual(a.z, b.z, 1E-4f);
+                NearlyEqual(a.x, b.x, Epsilon) &&
+                NearlyEqual(a.y, b.y, Epsilon) &&
+                NearlyEqual(a.z, b.z, Epsilon);
         }
 
         public static bool Equal(Quaternion a, Quaternion b) {
             return
-                NearlyEqual(a.x, b.x, 1E-4f) &&
-                NearlyEqual(a.y, b.y, 1E-4f) &&
-                NearlyEqual(a.z, b.z, 1E-4f) &&
-                NearlyEqual(a.w, b.w, 1E-4f);
+                NearlyEqual(a.x, b.x, Epsilon) &&
+                NearlyEqual(a.y, b.y, Epsilon) &&
+                NearlyEqual(a.z, b.z, Epsilon) &&
+                NearlyEqual(a.w, b.w, Epsilon);
         }
 
         // TODO: This is not actually being called right now, but it needs to be.
@@ -77,17 +79,22 @@ namespace Kfp
 
     public class DiffSerializer
     {
-        public static void Write<T>(BinaryWriter w, Diff<T> diff)
+        public static Diff<T> Deserialize<T>(BinaryReader r)
+            where T : struct
+        {
+            var diff = new Diff<T>();
+            diff.Changed = r.ReadInt32();
+            var deserializer = Introspection.GetDeserializer<T>();
+            deserializer(r, ref diff.Item);
+            return diff;
+        }
+
+        public static void Serialize<T>(BinaryWriter w, Diff<T> diff)
             where T : struct
         {
             w.Write(diff.Changed);
-
-            // var bindingFlags = BindingFlags.Public | BindingFlags.Instance;
-
-            // var fields = typeof(T).GetFields(bindingFlags);
-            // var props = typeof(T).GetProperties(bindingFlags);
-
-            // var attrs = Attribute.getCustomAttributes
+            var serializer = Introspection.GetSerializer<T>();
+            serializer(w, diff.Changed, ref diff.Item);
         }
     }
 
@@ -127,26 +134,53 @@ namespace Kfp
         }
     }
 
-    static class Introspection
+    internal class TypeCache
     {
-        private static Dictionary<Type, object> _appliers =
+        private Dictionary<Type, object> _cache =
             new Dictionary<Type, object>();
 
-        private static Dictionary<Type, object> _differs =
-            new Dictionary<Type, object>();
-
-        public delegate int Differ<T>(ref T fromItem, ref T toItem);
-        public delegate void Applier<T>(int changed, ref T changes, ref T target);
-
-        public static Applier<T> GetApplier<T>() {
+        public U GetOrCreate<T, U>(Func<U> creator) {
             object cached;
-            if (_appliers.TryGetValue(typeof(T), out cached)) {
-                return (Applier<T>)cached;
+            if (_cache.TryGetValue(typeof(T), out cached)) {
+                return (U)cached;
             }
 
-            var applier = BuildApplier<T>();
-            _appliers[typeof(T)] = applier;
-            return applier;
+            var obj = creator();
+            _cache[typeof(T)] = obj;
+            return obj;
+        }
+    }
+
+    static class Introspection
+    {
+        private static TypeCache _appliers = new TypeCache();
+        private static TypeCache _differs = new TypeCache();
+        private static TypeCache _serializers = new TypeCache();
+        private static TypeCache _deserializers = new TypeCache();
+
+        public delegate void Applier<T>(int changed, ref T changes, ref T target);
+        public delegate int Differ<T>(ref T fromItem, ref T toItem);
+        public delegate void Serializer<T>(
+            BinaryWriter writer, int changed, ref T item)
+            where T : struct;
+        public delegate void Deserializer<T>(BinaryReader reader, ref T item)
+            where T : struct;
+
+        public static Applier<T> GetApplier<T>() {
+            return _appliers.GetOrCreate<T, Applier<T>>(BuildApplier<T>);
+        }
+
+        public static Differ<T> GetDiffer<T>() {
+            return _differs.GetOrCreate<T, Differ<T>>(BuildDiffer<T>);
+        }
+
+        public static Serializer<T> GetSerializer<T>() where T : struct {
+            return _serializers.GetOrCreate<T, Serializer<T>>(BuildSerializer<T>);
+        }
+
+        public static Deserializer<T> GetDeserializer<T>() where T: struct {
+            return _deserializers.GetOrCreate<T, Deserializer<T>>(
+                BuildDeserializer<T>);
         }
 
         private static Applier<T> BuildApplier<T>() {
@@ -163,7 +197,7 @@ namespace Kfp
 
             var il = m.GetILGenerator();
 
-            foreach (var member in GetInterestingMembers<T>()) {
+            foreach (var member in GetInterestingMembers(type)) {
                 var attr = GetAttr(member);
 
                 var merge = il.DefineLabel();
@@ -236,15 +270,24 @@ namespace Kfp
             }
         }
 
-        public static Differ<T> GetDiffer<T>() {
-            object cached;
-            if (_differs.TryGetValue(typeof(T), out cached)) {
-                return (Differ<T>)cached;
+        private static void EmitWrite(ILGenerator il, MemberInfo member) {
+            Type writeType;
+            switch (member.MemberType) {
+                case MemberTypes.Field:
+                    writeType = ((FieldInfo)member).FieldType;
+                    break;
+                case MemberTypes.Property: {
+                    writeType = ((PropertyInfo)member).PropertyType;
+                    break;
+                }
+                default:
+                    throw new NotSupportedException(member.MemberType.ToString());
             }
 
-            var differ = BuildDiffer<T>();
-            _differs[typeof(T)] = differ;
-            return differ;
+            var writeMethod = typeof(DiffSerializer)
+                .GetMethod("Write", new[] {typeof(BinaryWriter), writeType});
+
+            il.Emit(OpCodes.Callvirt, writeMethod);
         }
 
         private static void EmitEq(ILGenerator il, MemberInfo member, Label label)
@@ -288,7 +331,7 @@ namespace Kfp
             var il = m.GetILGenerator();
             // Push accumulator
             il.Emit(OpCodes.Ldc_I4_0);
-            foreach (var member in GetInterestingMembers<T>()) {
+            foreach (var member in GetInterestingMembers(type)) {
                 var attr = GetAttr(member);
 
                 var merge = il.DefineLabel();
@@ -313,11 +356,58 @@ namespace Kfp
             return (Differ<T>)m.CreateDelegate(typeof(Differ<T>));
         }
 
-        private static IEnumerable<MemberInfo> GetInterestingMembers<T>()
+        private static Serializer<T> BuildSerializer<T>() where T : struct {
+            var type = typeof(T);
+            var m = new DynamicMethod(
+                "serializer_" + type.Name,
+                typeof(void),
+                new Type[] {
+                    typeof(BinaryWriter),
+                    typeof(int),
+                    type.MakeByRefType(),
+                },
+                type.Module, true);
+
+            var il = m.GetILGenerator();
+
+            foreach (var member in GetInterestingMembers(type)) {
+                var attr = GetAttr(member);
+
+                var merge = il.DefineLabel();
+
+                // if ((changed & (1 << index)) != 0)
+                il.Emit(OpCodes.Ldarg_1);
+                il.Emit(OpCodes.Ldc_I4, 1 << attr.Index);
+                il.Emit(OpCodes.And);
+                il.Emit(OpCodes.Ldc_I4_0);
+                il.Emit(OpCodes.Beq, merge);
+
+                // write value
+                il.Emit(OpCodes.Ldarg_0);
+
+                il.Emit(OpCodes.Ldarg_2);
+                EmitGet(il, member);
+
+                EmitWrite(il, member);
+
+                // end if
+                il.MarkLabel(merge);
+            }
+
+            il.Emit(OpCodes.Ret);
+
+            return (Serializer<T>)m.CreateDelegate(typeof(Serializer<T>));
+        }
+
+        private static Deserializer<T> BuildDeserializer<T>() where T : struct {
+            return (BinaryReader r, ref T t) => {};
+        }
+
+        private static IEnumerable<MemberInfo> GetInterestingMembers(Type type)
         {
             var bindingFlags = BindingFlags.Public | BindingFlags.Instance;
 
-            foreach (var member in typeof(T).GetMembers(bindingFlags)) {
+            foreach (var member in type.GetMembers(bindingFlags)) {
                 if (member.MemberType != MemberTypes.Field &&
                     member.MemberType != MemberTypes.Property) {
                     continue;

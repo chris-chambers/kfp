@@ -75,7 +75,7 @@ namespace Kfp
             var msg = string.Format(format, args);
             var buffer = AllocBuffer(
                 MessageType.Debug, encoding.GetByteCount(msg));
-            encoding.GetBytes(msg, 0, msg.Length, buffer, 1);
+            encoding.GetBytes(msg, 0, msg.Length, buffer, HeaderSize);
 
             return Send(buffer);
         }
@@ -84,7 +84,8 @@ namespace Kfp
             using (var ms = AllocStream(MessageType.VesselUpdate, null))
             using (var w = new BinaryWriter(ms)) {
                 w.Write(vesselId.ToByteArray());
-                DiffSerializer.Write(w, diff);
+                w.Write(diff.Changed);
+                // DiffSerializer.Serialize(w, diff);
                 return Send(ms);
             }
         }

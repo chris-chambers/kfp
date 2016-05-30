@@ -8,7 +8,8 @@ namespace Kfp
     class VesselTracker
     {
         private readonly IConnection _conn;
-        private readonly Dictionary<Guid, VesselStatus> _vessels;
+        private readonly Dictionary<Guid, History<VesselStatus>> _vessels;
+        private readonly HashSet<Guid> _toRemove;
 
         public VesselTracker(IConnection conn) {
             if (conn == null) {
@@ -16,48 +17,62 @@ namespace Kfp
             }
 
             _conn = conn;
-            _vessels = new Dictionary<Guid, VesselStatus>();
+            _vessels = new Dictionary<Guid, History<VesselStatus>>();
+            _toRemove = new HashSet<Guid>();
         }
 
-        public void Update()
-        {
+        public void Update() {
             if (FlightGlobals.fetch == null || FlightGlobals.Vessels == null) {
                 return;
             }
 
-            var toRemove = new HashSet<Guid>(_vessels.Keys);
+            try {
+                UpdateCore();
+            } finally {
+                _toRemove.Clear();
+            }
+        }
+
+        private void UpdateCore() {
             foreach (var vessel in FlightGlobals.Vessels) {
-                toRemove.Remove(vessel.id);
+                _toRemove.Remove(vessel.id);
+
                 VesselStatus stat = VesselStatusExtensions.FromVessel(vessel);
-                VesselStatus prevStat;
-                Diff<VesselStatus> diff;
-                if (!_vessels.TryGetValue(vessel.id, out prevStat)) {
+                History<VesselStatus> history;
+                if (!_vessels.TryGetValue(vessel.id, out history)) {
                     _conn.SendDebug(
                         "> new vessel: {0} ({1})",
-                        stat.Name, stat.Id);
-                    diff = Diff.Create(null, stat);
-                    // Debug.LogFormat("Name: {0}", diff.Item.Name);
+                        stat.Name, vessel.id);
+
+                    // TODO: Make history size configurable.
+                    history = new History<VesselStatus>(10);
+                    _vessels.Add(vessel.id, history);
+                    history.Add(stat);
                 } else {
-                    diff = Diff.Create(prevStat, stat);
+                    var diff = Diff.Create(history.Current, stat);
+                    if (diff.Changed != 0) {
+                        stat = history.Current;
+                        diff.Apply(ref stat);
+                        history.Add(stat);
+                        Debug.LogFormat(
+                            "history size: {0} - {1}",
+                            history.Count, vessel.id);
+                    }
                 }
 
-                diff.Apply(ref prevStat);
-                _vessels[vessel.id] = prevStat;
+                // FIXME: Figure out how/when to send an update again.
 
-                if (diff.Changed != 0) {
-                    // Debug.LogFormat("kfp: acc: {0} {1}",
-                    //                 prevInfo.acceleration,
-                    //                 info.acceleration);
-                    _conn.SendVesselUpdate(vessel.id, diff);
-                }
+                // if (diff.Changed != 0) {
+                //     // Debug.LogFormat("kfp: acc: {0} {1}",
+                //     //                 prevInfo.acceleration,
+                //     //                 info.acceleration);
+                //     _conn.SendVesselUpdate(vessel.id, diff);
+                // }
             }
 
-            foreach (var id in toRemove) {
-                var info = _vessels[id];
+            foreach (var id in _toRemove) {
                 _vessels.Remove(id);
-                _conn.SendDebug(
-                    "< removed vessel: {0} ({1})",
-                    info.Name, info.Id);
+                _conn.SendDebug("< removed vessel: {0}", id);
             }
         }
     }
@@ -67,7 +82,6 @@ namespace Kfp
         internal static VesselStatus FromVessel(Vessel v)
         {
             return new VesselStatus {
-                Id = v.id,
                 Name = v.name,
                 planetTime = Planetarium.GetUniversalTime(),
                 bodyName = v.mainBody.name,
